@@ -96,6 +96,51 @@ it(
   INTEGRATION_TEST_TIMEOUT_MS,
 );
 
+it(
+  "reports rejected Electron CLI arguments with structured issue details",
+  async () => {
+    const invalidTargetList = await runCli(
+      ["list-electron-targets", "not a url", "--json"],
+      process.env,
+    );
+    expect(invalidTargetList).toMatchObject({
+      error: "Electron analysis failed",
+      code: "invalid_request",
+      category: "invalid_input",
+      details: {
+        operation: "list_electron_targets",
+        issues: [
+          {
+            path: ["cdp_endpoint"],
+            reason: "invalid_value",
+          },
+        ],
+      },
+    });
+
+    const invalidPageInspect = await runCli(
+      ["inspect-electron-page", "http://127.0.0.1:9222", "", "--json"],
+      process.env,
+    );
+    expect(invalidPageInspect).toMatchObject({
+      error: "Electron analysis failed",
+      code: "invalid_request",
+      category: "invalid_input",
+      details: {
+        operation: "inspect_electron_page",
+        issues: [
+          {
+            path: ["target_id"],
+            reason: "out_of_range",
+            minimum: 1,
+          },
+        ],
+      },
+    });
+  },
+  INTEGRATION_TEST_TIMEOUT_MS,
+);
+
 // On Windows child.kill("SIGINT") terminates the process without a console signal.
 it.skipIf(process.platform === "win32")(
   "forwards SIGINT through Electron page inspection and completes target cleanup",
