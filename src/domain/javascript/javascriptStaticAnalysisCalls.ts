@@ -52,6 +52,7 @@ import {
   semanticFactoryLoaderMemberAt,
   semanticFactoryRequireLoaderAt,
   semanticRequireLoaderAt,
+  semanticModuleRequireCallAt,
 } from "./javascriptSemanticRequireOrigin.js";
 
 type JavaScriptCallLike =
@@ -249,6 +250,12 @@ const requireCallSpecifier = (
   bindings: JavaScriptSemanticAnalysisState,
   context: FindingContext,
 ): { readonly specifier: string | undefined } | null => {
+  // Parsing a module.require call does not establish the delegate's identity.
+  // Retain the unchecked load so graph ownership cannot read it as absence.
+  if (semanticModuleRequireCallAt(node, bindings)) {
+    context.accumulator.unknownFindings += 1;
+    return { specifier: undefined };
+  }
   const bareRequire = t.isIdentifier(node.callee, { name: "require" });
   if (bareRequire) {
     const loader = semanticRequireLoaderAt(
@@ -257,10 +264,25 @@ const requireCallSpecifier = (
       context.accumulator.factoryRequireBindingIds,
     );
     if (loader === "local") return null;
-    if (loader === "unknown") context.accumulator.unknownFindings += 1;
+    const binding =
+      loader === "create-require"
+        ? resolveSemanticBindingState(bindings, node.callee, "require")
+        : undefined;
+    const initializer =
+      binding === undefined
+        ? undefined
+        : semanticStableInitializer(binding, bindings)?.node;
+    const unknownBase =
+      loader === "create-require" &&
+      (!t.isCallExpression(initializer) ||
+        !isUnmodifiedImportMetaUrl(initializer.arguments[0], bindings));
+    if (loader === "unknown" || unknownBase)
+      context.accumulator.unknownFindings += 1;
     return {
       specifier:
-        loader === "unknown" ? undefined : argumentValue(node.arguments[0]),
+        loader === "unknown" || unknownBase
+          ? undefined
+          : argumentValue(node.arguments[0]),
     };
   }
   const factoryLoader = semanticFactoryRequireLoaderAt(
