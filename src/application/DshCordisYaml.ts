@@ -10,6 +10,7 @@ import {
   type Document,
   type Node,
   type YAMLMap,
+  type Pair,
 } from "yaml";
 import { ConfigurationError } from "../domain/configurationErrors.js";
 
@@ -82,7 +83,7 @@ export class DshCordisYaml {
     else if (isMap(resolved)) {
       const entries: [string, unknown][] = [];
       for (const pair of resolved.items) {
-        entries.push([this.#key(pair.key), this.value(pair.value)]);
+        entries.push([this.key(pair.key), this.value(pair.value)]);
       }
       value = Object.fromEntries(entries);
     }
@@ -91,7 +92,7 @@ export class DshCordisYaml {
     return value;
   }
 
-  #key(node: unknown): string {
+  key(node: unknown): string {
     const key = this.value(node);
     if (typeof key === "object" && key !== null)
       throw new ConfigurationError(
@@ -101,8 +102,32 @@ export class DshCordisYaml {
     return key === null ? "" : String(key);
   }
 
+  /** A case-only rename retains source key/value comments on the chosen alias. */
+  renameKey(map: YAMLMap, pair: Pair, key: string): void {
+    const existing = map.items.find((item) => this.key(item.key) === key);
+    const replacement = existing ?? pair;
+    const carry = (source: unknown, target: unknown): void => {
+      if (!isNode(source) || !isNode(target) || source === target) return;
+      for (const name of ["comment", "commentBefore"] as const) {
+        const values = [target[name], source[name]].filter(
+          (value): value is string => value !== undefined,
+        );
+        if (values.length > 0) target[name] = [...new Set(values)].join("\n");
+      }
+    };
+    if (existing !== undefined) {
+      carry(pair.key, existing.key);
+      carry(pair.value, existing.value);
+      map.items = map.items.filter((item) => item !== pair);
+    } else {
+      const renamed = this.document.createNode(key);
+      carry(pair.key, renamed);
+      replacement.key = renamed;
+    }
+  }
+
   field(map: YAMLMap | undefined, key: string): unknown {
-    return map?.items.findLast((pair) => this.#key(pair.key) === key)?.value;
+    return map?.items.findLast((pair) => this.key(pair.key) === key)?.value;
   }
 
   /** Preserve unchanged nodes and carry their comments when replacing values. */

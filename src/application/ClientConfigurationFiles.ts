@@ -88,6 +88,7 @@ export const readConfigurationFile = async (
 export const readClientConfigurationFiles = async (
   client: SetupClient,
   resources?: ArtifactResourceScope,
+  platform: NodeJS.Platform = process.platform,
 ): Promise<
   Result<readonly ClientConfigurationSource[], ClientConfigurationFileError>
 > => {
@@ -104,6 +105,7 @@ export const readClientConfigurationFiles = async (
         document.value,
         {},
         "fragment",
+        platform,
       );
       if (!environment.ok)
         return err(invalidEnvironment(path, environment.error));
@@ -112,6 +114,9 @@ export const readClientConfigurationFiles = async (
   }
   const environment = clientRegistrationEnvironment(
     effectiveClientConfiguration(documents),
+    {},
+    "effective",
+    platform,
   );
   if (!environment.ok)
     return err(invalidEnvironment(client.configPath, environment.error));
@@ -177,6 +182,7 @@ export const effectiveClientConfiguration = (
 export const readEffectiveClientRegistrationConfiguration = async (
   client: SetupClient,
   resources?: ArtifactResourceScope,
+  platform: NodeJS.Platform = process.platform,
 ): Promise<
   Result<
     {
@@ -186,7 +192,11 @@ export const readEffectiveClientRegistrationConfiguration = async (
     ClientConfigurationFileError
   >
 > => {
-  const nativeSources = await readClientConfigurationFiles(client, resources);
+  const nativeSources = await readClientConfigurationFiles(
+    client,
+    resources,
+    platform,
+  );
   if (!nativeSources.ok) return nativeSources;
   const nativeDocument = effectiveClientConfiguration(nativeSources.value);
   const fallbackPath =
@@ -207,6 +217,7 @@ export const readEffectiveClientRegistrationConfiguration = async (
   const fallbackSources = await readClientConfigurationFiles(
     fallbackClient,
     resources,
+    platform,
   );
   if (!fallbackSources.ok) return fallbackSources;
   const fallbackDocument = effectiveClientConfiguration(fallbackSources.value);
